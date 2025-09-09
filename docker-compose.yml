@@ -1,0 +1,115 @@
+services:
+  sonarqube:
+    image: sonarqube:9.9.1-community
+    container_name: be-devkit-sonarqube
+    ports:
+      - "${SONARQUBE_PORT:-9000}:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+      - SONAR_JDBC_URL=jdbc:postgresql://db:5432/sonar
+      - SONAR_JDBC_USERNAME=sonar
+      - SONAR_JDBC_PASSWORD=sonar
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+      - ./scripts:/scripts
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sonar-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9000/api/system/status | grep -q 'UP' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+  db:
+    image: postgres:13
+    container_name: be-devkit-db
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_DB=sonar
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    networks:
+      - sonar-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: be-devkit-backend
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    environment:
+      - SONAR_HOST_URL=http://sonarqube:9000
+      - SONAR_TOKEN_FILE=/app/config/sonar-token.txt
+      - COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-be-devkit}
+    volumes:
+      - ./config:/app/config
+      - backend_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Permitir acesso a todo o sistema de arquivos do host
+      - /:/host-root:ro
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    networks:
+      - sonar-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  frontend:
+    build: ./frontend
+    container_name: be-devkit-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      - REACT_APP_BACKEND_URL=http://localhost:3001
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sonar-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+  setup:
+    build: ./setup
+    container_name: be-devkit-setup
+    volumes:
+      - ./config:/app/config
+    environment:
+      - SONAR_HOST_URL=http://sonarqube:9000
+    depends_on:
+      sonarqube:
+        condition: service_healthy
+    networks:
+      - sonar-network
+    restart: "no"
+
+volumes:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  postgresql_data:
+  backend_data:
+
+networks:
+  sonar-network:
+    driver: bridge
