@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Button } from './ui/button';
-import { ArrowLeft, Code2 } from 'lucide-react';
 import ProjectSelector from './ProjectSelector.jsx';
-import AnalysisPanel from './AnalysisPanel.jsx';
+import AnalysisLayout from './AnalysisLayout.jsx';
 import { mockAPI } from '../mockData.js';
 
 const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
@@ -12,29 +10,9 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
   const [analysisLog, setAnalysisLog] = useState('');
   const [analysisResults, setAnalysisResults] = useState(null);
   const [analysisHistory, setAnalysisHistory] = useState([]);
-  const [dashboardStats, setDashboardStats] = useState({
-    totalAnalyses: 0,
-    passedQualityGate: 0,
-    failedQualityGate: 0,
-    averageScore: 0
-  });
+  const [activeTab, setActiveTab] = useState('execute');
 
   const isDevelopment = false; // Força usar API real sempre
-
-  // Carregar estatísticas do dashboard
-  const loadDashboardStats = async () => {
-    try {
-      if (isDevelopment) {
-        const response = await mockAPI.getDashboardStats();
-        setDashboardStats(response.data);
-      } else {
-        const response = await axios.get('/api/analysis/stats');
-        setDashboardStats(response.data);
-      }
-    } catch (error) {
-      console.error('Failed to load dashboard stats:', error);
-    }
-  };
 
   // Carregar histórico de análises
   const loadAnalysisHistory = async () => {
@@ -53,7 +31,6 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
 
   // Carregar dados iniciais
   useEffect(() => {
-    loadDashboardStats();
     loadAnalysisHistory();
   }, []);
 
@@ -143,54 +120,84 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Button 
-                variant="ghost" 
-                onClick={onBack}
-                className="flex items-center"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Voltar
-              </Button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                  <Code2 className="w-8 h-8 text-[#cc092f] mr-3" />
-                  BE Dev Kit
-                </h1>
-              </div>
-            </div>
-          </div>
-        </div>
+
+  // Seção de input (ProjectSelector)
+  const inputSection = (activeTab === 'execute') ? (
+    <ProjectSelector
+      projectPath={projectPath}
+      setProjectPath={setProjectPath}
+      isAnalyzing={isAnalyzing}
+    />
+  ) : null;
+
+  // Seção de resultado (pode ser expandida para mostrar summary/resultados)
+  const resultSection = null; // Adapte aqui se quiser mostrar resultado só na tab execute
+
+  // Seção de histórico
+  const historySection = (activeTab === 'history') ? (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold">Histórico de Análises</h3>
       </div>
-
-      <main className="space-y-6">
-        {/* Seletor de projeto */}
-        <div className="container mx-auto px-6 pt-6">
-          <ProjectSelector
-            projectPath={projectPath}
-            setProjectPath={setProjectPath}
-            isAnalyzing={isAnalyzing}
-          />
+      {analysisHistory && analysisHistory.length > 0 ? (
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Projeto</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duração</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {analysisHistory.map((item) => (
+              <tr key={item.id}>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">{item.projectName}</div>
+                  <div className="text-xs text-gray-500 font-mono">{item.project}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {item.status === 'passed' ? (
+                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">Aprovado</span>
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">Reprovado</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.date}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.duration}</td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <a href={item.sonarUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Ver Detalhes</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <div className="text-center py-12">
+          <span className="block text-gray-400 text-2xl mb-2">📊</span>
+          <h3 className="mt-4 text-lg font-semibold text-gray-900">Nenhum histórico de análise</h3>
+          <p className="mt-2 text-gray-600">Inicie sua primeira análise de código para ver resultados aqui</p>
         </div>
-
-        {/* Painel de análise */}
-        <AnalysisPanel
-          isAnalyzing={isAnalyzing}
-          analysisLog={analysisLog}
-          analysisResults={analysisResults}
-          analysisHistory={analysisHistory}
-          onStartAnalysis={startAnalysis}
-          systemHealth={systemHealth}
-          onRefreshHistory={loadAnalysisHistory}
-        />
-      </main>
+      )}
     </div>
+  ) : null;
+
+  return (
+    <AnalysisLayout
+      title="SonarQube - Análise de Código"
+      description={"Analise a qualidade do código do seu projeto com o SonarQube."}
+      onBack={onBack}
+      systemHealth={systemHealth?.sonarqube}
+      inputSection={inputSection}
+      onStart={startAnalysis}
+      isRunning={isAnalyzing}
+      log={analysisLog}
+      resultSection={resultSection}
+      historySection={historySection}
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+    />
   );
 };
 

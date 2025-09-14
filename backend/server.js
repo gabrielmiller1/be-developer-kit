@@ -6,10 +6,23 @@ const fsPromises = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
+const AdobeAemValidator = require('./services/adobeAemValidator');
 
 // Configurar CORS
 fastify.register(require('@fastify/cors'), {
   origin: true
+});
+
+// Registrar plugin de multipart para upload de arquivos
+fastify.register(require('@fastify/multipart'), {
+  limits: {
+    fieldNameSize: 100,     // Max field name size in bytes
+    fieldSize: 100,         // Max field value size in bytes
+    fields: 10,             // Max number of non-file fields
+    fileSize: 200 * 1024 * 1024, // 200MB max file size
+    files: 1,               // Max number of file fields
+    headerPairs: 2000       // Max number of header key=>value pairs
+  }
 });
 
 // Criar diretório de dados se não existir
@@ -30,6 +43,23 @@ db.exec(`
     status TEXT NOT NULL,
     quality_gate TEXT,
     dashboard_url TEXT,
+    start_time DATETIME,
+    duration TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`);
+
+// Criar tabela para histórico de validações Adobe
+db.exec(`
+  CREATE TABLE IF NOT EXISTS adobe_validation_history (
+    id TEXT PRIMARY KEY,
+    package_path TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    errors_count INTEGER DEFAULT 0,
+    warnings_count INTEGER DEFAULT 0,
+    info_count INTEGER DEFAULT 0,
+    validation_results TEXT,
     start_time DATETIME,
     duration TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -74,71 +104,110 @@ async function getSonarToken() {
   }
 }
 
-// Função para executar análise Adobe Filters (mock)
-async function runAdobeFiltersAnalysis(projectPath, analysisId) {
+// Função para executar validação Adobe AEM real
+async function runAdobeAemValidation(packagePath, analysisId) {
   return new Promise(async (resolve, reject) => {
-    const projectName = path.basename(projectPath);
+    const packageName = path.basename(packagePath);
+    const startTime = new Date();
     
     try {
       const analysis = activeAnalyses.get(analysisId);
       if (analysis) {
         analysis.status = 'running';
-        analysis.logs.push(`Iniciando análise Adobe Filters do projeto: ${projectName}`);
-        analysis.logs.push(`Caminho: ${projectPath}`);
-        analysis.logs.push('🔍 Executando filtros de conteúdo Adobe...');
+        analysis.logs.push(`Iniciando validação Adobe AEM do pacote: ${packageName}`);
+        analysis.logs.push(`Caminho: ${packagePath}`);
+        analysis.logs.push('🔍 Executando validações...');
+        analysis.startTime = startTime;
       }
 
-      // Simular análise Adobe Filters
-      setTimeout(() => {
-        const analysis = activeAnalyses.get(analysisId);
-        if (analysis) {
-          const hasIssues = Math.random() > 0.7; // 30% chance de falha
-          
-          analysis.status = 'completed';
-          analysis.qualityGateStatus = hasIssues ? 'FAILED' : 'PASSED';
-          analysis.logs.push('✅ Análise Adobe Filters concluída!');
-          
-          if (hasIssues) {
-            analysis.logs.push('❌ Filtros detectaram conteúdo inadequado');
-          } else {
-            analysis.logs.push('✅ Conteúdo aprovado pelos filtros Adobe');
-          }
-          
-          analysis.result = {
-            projectKey: `adobe-${projectName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
-            dashboardUrl: `http://localhost:9000/dashboard?id=adobe-${projectName}`,
-            qualityGate: {
-              status: analysis.qualityGateStatus
-            },
-            metrics: {
-              coverage: hasIssues ? '60%' : '95%',
-              maintainabilityRating: hasIssues ? 'C' : 'A',
-              reliabilityRating: hasIssues ? 'B' : 'A', 
-              securityRating: hasIssues ? 'B' : 'A'
-            }
-          };
+      // Mapear caminho do host para container se necessário
+      let actualPath = packagePath;
+      // Para validação Adobe, não precisamos do mapeamento /host-root
+      // pois estamos rodando diretamente no container backend
+      // O volume já está montado como /:/host-root:ro
+      if (!packagePath.startsWith('/host-root') && !packagePath.startsWith('/tmp') && !packagePath.startsWith('/app')) {
+        // Se o path não for absoluto do container, assumir que é do host
+        actualPath = `/host-root${packagePath}`;
+      }
+
+      // Executar validação real
+      const validator = new AdobeAemValidator();
+      if (analysis) {
+        analysis.logs.push('📋 Validando nome do pacote...');
+        analysis.logs.push('📦 Extraindo e analisando estrutura...');
+        analysis.logs.push('🔍 Verificando filter.xml...');
+        analysis.logs.push('📝 Analisando properties.xml...');
+        analysis.logs.push('🗂️  Validando conteúdo jcr_root...');
+        analysis.logs.push('🔗 Verificando queries GraphQL...');
+      }
+
+      const results = await validator.validatePackage(actualPath);
+      const endTime = new Date();
+      const duration = `${Math.round((endTime - startTime) / 1000)}s`;
+
+      // Gerar relatório console
+      const consoleReport = validator.generateConsoleReport(results);
+      
+      if (analysis) {
+        analysis.status = 'completed';
+        analysis.qualityGateStatus = results.status === 'failed' ? 'FAILED' : 'PASSED';
+        analysis.duration = duration;
+        analysis.logs.push('✅ Validação Adobe AEM concluída!');
+        
+        if (results.status === 'failed') {
+          analysis.logs.push(`❌ Validação falhou: ${results.summary.errors} erro(s) encontrado(s)`);
+        } else if (results.status === 'warning') {
+          analysis.logs.push(`⚠️ Validação com avisos: ${results.summary.warnings} warning(s)`);
+        } else {
+          analysis.logs.push('✅ Pacote aprovado sem problemas!');
         }
 
-        resolve({
-          projectKey: `adobe-${projectName}`,
-          dashboardUrl: `http://localhost:9000/dashboard?id=adobe-${projectName}`,
+        analysis.logs.push(`📊 Resumo: ${results.summary.errors} erros, ${results.summary.warnings} avisos, ${results.summary.info} informações`);
+        
+        // Salvar resultado detalhado
+        analysis.result = {
+          packageKey: `adobe-aem-${packageName.toLowerCase().replace(/[^a-z0-9]/g, '-')}`,
+          packageName: packageName,
+          validationResults: results,
+          consoleReport: consoleReport,
           qualityGate: {
-            status: hasIssues ? 'FAILED' : 'PASSED'
+            status: analysis.qualityGateStatus
           },
           metrics: {
-            coverage: hasIssues ? '60%' : '95%',
-            maintainabilityRating: hasIssues ? 'C' : 'A',
-            reliabilityRating: hasIssues ? 'B' : 'A', 
-            securityRating: hasIssues ? 'B' : 'A'
+            totalIssues: results.summary.total,
+            errors: results.summary.errors,
+            warnings: results.summary.warnings,
+            info: results.summary.info,
+            exitCode: results.exitCode
           }
-        });
-      }, 3000); // 3 segundos de simulação
+        };
+
+        // Salvar no banco de dados
+        saveAdobeValidationToDatabase(analysis);
+      }
+
+      resolve({
+        packageKey: `adobe-aem-${packageName}`,
+        packageName: packageName,
+        validationResults: results,
+        consoleReport: consoleReport,
+        qualityGate: {
+          status: results.status === 'failed' ? 'FAILED' : 'PASSED'
+        },
+        metrics: {
+          totalIssues: results.summary.total,
+          errors: results.summary.errors,
+          warnings: results.summary.warnings,
+          info: results.summary.info,
+          exitCode: results.exitCode
+        }
+      });
       
     } catch (error) {
-      fastify.log.error(`Erro na análise Adobe Filters: ${error}`);
+      fastify.log.error(`Erro na validação Adobe AEM: ${error}`);
       if (activeAnalyses.get(analysisId)) {
         activeAnalyses.get(analysisId).status = 'error';
-        activeAnalyses.get(analysisId).logs.push(`Erro na análise Adobe Filters: ${error.message}`);
+        activeAnalyses.get(analysisId).logs.push(`Erro na validação: ${error.message}`);
       }
       reject(error);
     }
@@ -168,6 +237,37 @@ function saveAnalysisToDatabase(analysis) {
     fastify.log.info(`Análise ${analysis.id} salva no banco de dados`);
   } catch (error) {
     fastify.log.error(`Erro ao salvar análise no banco: ${error}`);
+  }
+}
+
+// Função para salvar validação Adobe no SQLite
+function saveAdobeValidationToDatabase(analysis) {
+  try {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO adobe_validation_history 
+      (id, package_path, package_name, status, errors_count, warnings_count, info_count, validation_results, start_time, duration)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    const results = analysis.result?.validationResults || {};
+    const summary = results.summary || { errors: 0, warnings: 0, info: 0 };
+    
+    stmt.run(
+      analysis.id,
+      analysis.projectPath,
+      path.basename(analysis.projectPath),
+      analysis.qualityGateStatus === 'PASSED' ? 'passed' : 'failed',
+      summary.errors,
+      summary.warnings,
+      summary.info,
+      JSON.stringify(results),
+      analysis.startTime?.toISOString(),
+      analysis.duration || '30s'
+    );
+    
+    fastify.log.info(`Validação Adobe ${analysis.id} salva no banco de dados`);
+  } catch (error) {
+    fastify.log.error(`Erro ao salvar validação Adobe no banco: ${error}`);
   }
 }
 
@@ -414,52 +514,123 @@ fastify.get('/api/directories', async (request, reply) => {
   }
 });
 
-// Rota para análise Adobe Content Package
-fastify.post('/api/adobe/validate', async (request, reply) => {
+// Rota para análise Adobe Content Package (upload de arquivo)
+fastify.post('/api/adobe/upload-validate', async (request, reply) => {
   try {
-    const analysisId = uuidv4();
+    const data = await request.file();
     
-    // Simular validação de pacote Adobe (mock)
-    const validationResults = {
+    if (!data) {
+      return reply.code(400).send({ error: 'Nenhum arquivo enviado' });
+    }
+
+    // Validar tipo de arquivo
+    if (!data.filename.endsWith('.zip')) {
+      return reply.code(400).send({ error: 'Apenas arquivos .zip são permitidos' });
+    }
+
+    // Validar tamanho (200MB)
+    const maxSize = 200 * 1024 * 1024;
+    if (data.file.bytesRead > maxSize) {
+      return reply.code(400).send({ error: 'Arquivo muito grande. Máximo 200MB permitido.' });
+    }
+
+    // Salvar arquivo temporariamente
+    const analysisId = uuidv4();
+    const tempFilePath = `/tmp/adobe-${analysisId}-${data.filename}`;
+    
+    const fs = require('fs');
+    const pipeline = require('util').promisify(require('stream').pipeline);
+    
+    await pipeline(data.file, fs.createWriteStream(tempFilePath));
+    
+    fastify.log.info(`Arquivo salvo: ${tempFilePath} (${data.filename})`);
+
+    // Registrar validação
+    activeAnalyses.set(analysisId, {
       id: analysisId,
-      status: 'completed',
-      packageName: 'sample-package.zip',
-      version: '1.2.3',
-      totalFiles: Math.floor(Math.random() * 500) + 100,
-      issues: Math.random() > 0.3 ? [
-        {
-          type: 'error',
-          severity: 'high',
-          message: 'Permissões incorretas em /content/dam/assets',
-          file: 'META-INF/vault/filter.xml'
-        },
-        {
-          type: 'warning', 
-          severity: 'medium',
-          message: 'Dependência obsoleta encontrada: cq-commons v1.8.2',
-          file: 'META-INF/vault/properties.xml'
-        },
-        {
-          type: 'info',
-          severity: 'low', 
-          message: 'Recomendado adicionar descrição no pacote',
-          file: 'META-INF/vault/definition/.content.xml'
+      projectPath: tempFilePath,
+      status: 'starting',
+      logs: [],
+      startTime: new Date()
+    });
+
+    // Executar validação em background
+    runAdobeAemValidation(tempFilePath, analysisId)
+      .then(() => {
+        // Limpar arquivo temporário após validação
+        setTimeout(() => {
+          try {
+            fs.unlinkSync(tempFilePath);
+            fastify.log.info(`Arquivo temporário removido: ${tempFilePath}`);
+          } catch (error) {
+            fastify.log.warn(`Erro ao remover arquivo temporário: ${error.message}`);
+          }
+        }, 5000); // 5 segundos para garantir que a resposta foi enviada
+      })
+      .catch(error => {
+        fastify.log.error('Erro na validação Adobe:', error);
+        const analysis = activeAnalyses.get(analysisId);
+        if (analysis) {
+          analysis.status = 'error';
+          analysis.logs.push(`Erro na validação: ${error.message}`);
         }
-      ] : [],
-      metrics: {
-        contentNodes: Math.floor(Math.random() * 200) + 50,
-        configurations: Math.floor(Math.random() * 30) + 10,
-        templates: Math.floor(Math.random() * 15) + 5,
-        components: Math.floor(Math.random() * 25) + 8
-      },
-      compliance: Math.random() > 0.3 ? 85 : 98
-    };
+        // Limpar arquivo em caso de erro também
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (cleanupError) {
+          fastify.log.warn(`Erro ao limpar arquivo após falha: ${cleanupError.message}`);
+        }
+      });
 
     return { 
       success: true, 
       analysisId, 
-      message: 'Validação Adobe iniciada com sucesso',
-      results: validationResults
+      status: 'started',
+      message: 'Upload realizado e validação Adobe AEM iniciada com sucesso',
+      filename: data.filename
+    };
+  } catch (error) {
+    fastify.log.error('Erro no upload/validação Adobe:', error);
+    return reply.code(500).send({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para análise Adobe Content Package (por path - mantida para compatibilidade)
+fastify.post('/api/adobe/validate', async (request, reply) => {
+  const { packagePath } = request.body;
+  
+  if (!packagePath) {
+    return reply.code(400).send({ error: 'Caminho do pacote é obrigatório' });
+  }
+
+  try {
+    const analysisId = uuidv4();
+    
+    // Registrar validação
+    activeAnalyses.set(analysisId, {
+      id: analysisId,
+      projectPath: packagePath,
+      status: 'starting',
+      logs: [],
+      startTime: new Date()
+    });
+
+    // Executar validação em background
+    runAdobeAemValidation(packagePath, analysisId)
+      .catch(error => {
+        fastify.log.error('Erro na validação Adobe:', error);
+        const analysis = activeAnalyses.get(analysisId);
+        if (analysis) {
+          analysis.status = 'error';
+          analysis.logs.push(`Erro na validação: ${error.message}`);
+        }
+      });
+
+    return { 
+      success: true, 
+      analysisId, 
+      status: 'started',
+      message: 'Validação Adobe AEM iniciada com sucesso'
     };
   } catch (error) {
     fastify.log.error('Erro na validação Adobe:', error);
@@ -588,6 +759,30 @@ fastify.get('/api/analysis/history', async (request, reply) => {
     return analyses;
   } catch (error) {
     fastify.log.error('Erro ao obter histórico:', error);
+    return reply.code(500).send({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Rota para histórico de validações Adobe
+fastify.get('/api/adobe/history', async (request, reply) => {
+  try {
+    const stmt = db.prepare(`
+      SELECT id, package_path as packagePath, package_name as packageName, 
+             status, errors_count as errors, warnings_count as warnings, 
+             info_count as info, start_time as date, duration
+      FROM adobe_validation_history 
+      ORDER BY created_at DESC 
+      LIMIT 50
+    `);
+    
+    const validations = stmt.all().map(v => ({
+      ...v,
+      date: v.date || new Date().toISOString()
+    }));
+
+    return validations;
+  } catch (error) {
+    fastify.log.error('Erro ao obter histórico Adobe:', error);
     return reply.code(500).send({ error: 'Erro interno do servidor' });
   }
 });

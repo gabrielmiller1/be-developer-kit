@@ -1,97 +1,137 @@
-import React, { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { 
-  Upload, 
-  FileCheck, 
-  AlertTriangle, 
-  CheckCircle, 
-  XCircle,
-  Loader2,
-  Download,
-  ArrowLeft,
-  Package,
-  Shield,
-  FileText,
-  Settings
-} from 'lucide-react';
+import { Loader2, Shield, FileCheck, Download } from 'lucide-react';
+import AnalysisLayout from './AnalysisLayout.jsx';
 
 const AdobeContentValidator = ({ onBack }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isValidating, setIsValidating] = useState(false);
-  const [validationResults, setValidationResults] = useState(null);
   const [validationLog, setValidationLog] = useState('');
+  const [validationResults, setValidationResults] = useState(null);
+  const [validationHistory, setValidationHistory] = useState([]);
+  const [activeTab, setActiveTabState] = useState('execute');
+  const setActiveTab = (tab) => {
+    console.log('[AdobeContentValidator] Tab selecionada:', tab);
+    setActiveTabState(tab);
+  };
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setSelectedFile(file);
-      setValidationResults(null);
-      setValidationLog('');
+  // Carregar histórico de validações
+  const loadValidationHistory = async () => {
+    try {
+      const response = await axios.get('/api/adobe/history');
+      setValidationHistory(response.data);
+    } catch (error) {
+      console.error('Failed to load validation history:', error);
     }
   };
 
-  const simulateValidation = async () => {
-    setIsValidating(true);
-    setValidationLog('🚀 Iniciando validação do pacote Adobe AEM...\n');
-    
-    // Simular processo de validação
-    const steps = [
-      '📦 Extraindo pacote de conteúdo...',
-      '🔍 Analisando estrutura de diretórios...',
-      '📋 Validando metadados do pacote...',
-      '🔐 Verificando permissões e ACLs...',
-      '📝 Analisando arquivos de configuração...',
-      '🔗 Validando dependências...',
-      '✅ Gerando relatório final...'
-    ];
+  // Carregar dados iniciais
+  useEffect(() => {
+    loadValidationHistory();
+  }, []);
 
-    for (let i = 0; i < steps.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setValidationLog(prev => prev + steps[i] + '\n');
+  // Função para seleção de arquivo
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      if (!file.name.endsWith('.zip')) {
+        alert('Por favor, selecione um arquivo .zip válido');
+        return;
+      }
+      
+      if (file.size > 200 * 1024 * 1024) { // 200MB
+        alert('Arquivo muito grande. Máximo 200MB permitido.');
+        return;
+      }
+      
+      setSelectedFile(file);
+      setValidationLog(`📁 Arquivo selecionado: ${file.name}\n📊 Tamanho: ${(file.size / 1024 / 1024).toFixed(2)}MB\n`);
+      setValidationResults(null);
+    }
+  };
+
+  // Iniciar validação via upload
+  const startValidation = async () => {
+    if (!selectedFile) {
+      alert('Por favor, selecione um arquivo .zip');
+      return;
     }
 
-    // Simular resultados
-    const hasIssues = Math.random() > 0.3; // 70% chance de ter problemas
-    
-    const results = {
-      status: hasIssues ? 'warning' : 'success',
-      packageName: selectedFile.name,
-      version: '1.2.3',
-      totalFiles: Math.floor(Math.random() * 500) + 100,
-      issues: hasIssues ? [
-        {
-          type: 'error',
-          severity: 'high',
-          message: 'Permissões incorretas em /content/dam/assets',
-          file: 'META-INF/vault/filter.xml'
-        },
-        {
-          type: 'warning', 
-          severity: 'medium',
-          message: 'Dependência obsoleta encontrada: cq-commons v1.8.2',
-          file: 'META-INF/vault/properties.xml'
-        },
-        {
-          type: 'info',
-          severity: 'low', 
-          message: 'Recomendado adicionar descrição no pacote',
-          file: 'META-INF/vault/definition/.content.xml'
-        }
-      ] : [],
-      metrics: {
-        contentNodes: Math.floor(Math.random() * 200) + 50,
-        configurations: Math.floor(Math.random() * 30) + 10,
-        templates: Math.floor(Math.random() * 15) + 5,
-        components: Math.floor(Math.random() * 25) + 8
-      },
-      compliance: hasIssues ? 85 : 98
-    };
+    setIsValidating(true);
+    setValidationLog(prev => prev + '🚀 Iniciando upload e validação Adobe AEM...\n');
+    setValidationResults(null);
 
-    setValidationResults(results);
-    setValidationLog(prev => prev + '\n🎉 Validação concluída!\n');
-    setIsValidating(false);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const response = await axios.post('/api/adobe/upload-validate', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setValidationLog(prev => {
+            const lines = prev.split('\n');
+            const lastLine = lines[lines.length - 1];
+            if (lastLine.includes('📤 Upload:')) {
+              lines[lines.length - 1] = `📤 Upload: ${percentCompleted}%`;
+              return lines.join('\n');
+            } else {
+              return prev + `📤 Upload: ${percentCompleted}%\n`;
+            }
+          });
+        }
+      });
+
+      if (response.data.success) {
+        setValidationLog(prev => prev + '✅ Upload realizado e validação iniciada com sucesso!\n');
+        monitorValidation(response.data.analysisId);
+      } else {
+        throw new Error(response.data.error || 'Falha ao iniciar validação');
+      }
+    } catch (error) {
+      console.error('Validation failed:', error);
+      setValidationLog(prev => prev + `❌ Erro: ${error.message}\n`);
+      setIsValidating(false);
+    }
+  };
+
+  // Monitorar progresso da validação
+  const monitorValidation = async (analysisId) => {
+    try {
+      const checkStatus = async () => {
+        try {
+          const response = await axios.get(`/api/analysis/${analysisId}`);
+          const { status, log, results } = response.data;
+          if (log) {
+            setValidationLog(prev => prev + log + '\n');
+          }
+          if (status === 'completed') {
+            setValidationLog(prev => prev + '🎉 Validação concluída!\n');
+            setValidationResults(results);
+            setIsValidating(false);
+            await loadValidationHistory();
+            return;
+          } else if (status === 'failed' || status === 'error') {
+            setValidationLog(prev => prev + '❌ Validação falhou!\n');
+            setIsValidating(false);
+            return;
+          } else {
+            setTimeout(checkStatus, 2000);
+          }
+        } catch (error) {
+          console.error('Error checking validation status:', error);
+          setValidationLog(prev => prev + `❌ Erro ao verificar status: ${error.message}\n`);
+          setIsValidating(false);
+        }
+      };
+      checkStatus();
+    } catch (error) {
+      console.error('Error starting validation monitoring:', error);
+      setIsValidating(false);
+    }
   };
 
   const getIssueIcon = (type) => {
@@ -116,276 +156,147 @@ const AdobeContentValidator = ({ onBack }) => {
     
     return (
       <Badge className={colors[severity] || colors.low}>
-        {severity.toUpperCase()}
+        {severity?.toUpperCase() || 'INFO'}
       </Badge>
     );
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-6xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <Button 
-                variant="ghost" 
-                onClick={onBack}
-                className="flex items-center"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Voltar
-              </Button>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-                  <Shield className="w-8 h-8 text-red-500 mr-3" />
-                  Validador Adobe AEM
-                </h1>
-                <p className="text-gray-600">
-                  Validação completa de pacotes de conteúdo Adobe Experience Manager
-                </p>
-              </div>
-            </div>
-          </div>
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'passed':
+        return <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-green-100 text-green-800">Aprovado</span>;
+      case 'failed':
+        return <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">Reprovado</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-gray-100 text-gray-800">Desconhecido</span>;
+    }
+  };
+
+  // Input Section
+  const inputSection = (
+    <div>
+      <input
+        type="file"
+        accept=".zip"
+        onChange={handleFileSelect}
+        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+        disabled={isValidating}
+      />
+      {selectedFile && (
+        <div className="text-sm text-green-600 bg-green-50 p-2 rounded mt-2">
+          ✅ Arquivo selecionado: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)}MB)
+        </div>
+      )}
+    </div>
+  );
+
+  // Result Section (apenas se tab ativa for 'execute')
+  const resultSection = (activeTab === 'execute' && validationResults) ? (
+    <div className="mt-6">
+      <div className="mb-4 flex items-center gap-4">
+        <Shield className="w-6 h-6 text-red-500" />
+        <span className="text-xl font-bold">Resultado da Validação</span>
+        {getStatusBadge(validationResults.qualityGate?.status === 'PASSED' ? 'passed' : 'failed')}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+        <div className="text-center">
+          <div className="text-2xl font-bold text-red-600">{validationResults.metrics?.errors || 0}</div>
+          <div className="text-sm text-gray-600">Erros</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-yellow-600">{validationResults.metrics?.warnings || 0}</div>
+          <div className="text-sm text-gray-600">Avisos</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-blue-600">{validationResults.metrics?.info || 0}</div>
+          <div className="text-sm text-gray-600">Informações</div>
+        </div>
+        <div className="text-center">
+          <div className="text-2xl font-bold text-gray-900">{validationResults.metrics?.totalIssues || 0}</div>
+          <div className="text-sm text-gray-600">Total</div>
         </div>
       </div>
-
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Upload Section */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Upload className="w-5 h-5 mr-2" />
-                  Upload do Pacote
-                </CardTitle>
-                <CardDescription>
-                  Selecione um arquivo .zip de pacote de conteúdo AEM
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-red-400 transition-colors">
-                    <input
-                      type="file"
-                      accept=".zip"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      id="file-upload"
-                    />
-                    <label htmlFor="file-upload" className="cursor-pointer">
-                      <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-sm text-gray-600">
-                        Clique para selecionar arquivo
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Formatos aceitos: .zip
-                      </p>
-                    </label>
-                  </div>
-
-                  {selectedFile && (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {selectedFile.name}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                          </p>
-                        </div>
-                        <CheckCircle className="w-5 h-5 text-green-500" />
-                      </div>
-                    </div>
-                  )}
-
-                  <Button 
-                    onClick={simulateValidation}
-                    disabled={!selectedFile || isValidating}
-                    className="w-full bg-red-500 hover:bg-red-600"
-                  >
-                    {isValidating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Validando...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-4 h-4 mr-2" />
-                        Iniciar Validação
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Validation Features */}
-            <Card className="mt-6">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Settings className="w-5 h-5 mr-2" />
-                  O que é Validado
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-3 text-sm">
-                  <li className="flex items-center">
-                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                    Estrutura de diretórios
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                    Metadados e propriedades
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                    Permissões e ACLs
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                    Dependências de pacotes
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                    Filtros de conteúdo
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="w-4 h-4 text-green-500 mr-2" />
-                    Conformidade Adobe
-                  </li>
-                </ul>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Results Section */}
-          <div className="lg:col-span-2">
-            {/* Validation Log */}
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <FileText className="w-5 h-5 mr-2" />
-                  Log de Validação
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="bg-gray-900 text-green-400 p-4 rounded-lg h-48 overflow-y-auto font-mono text-sm">
-                  {validationLog || 'Aguardando seleção de arquivo...'}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Validation Results */}
-            {validationResults && (
-              <div className="space-y-6">
-                {/* Summary */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center justify-between">
-                      <span className="flex items-center">
-                        <FileCheck className="w-5 h-5 mr-2" />
-                        Resultado da Validação
-                      </span>
-                      <Badge className={
-                        validationResults.status === 'success' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }>
-                        {validationResults.status === 'success' ? 'APROVADO' : 'COM AVISOS'}
-                      </Badge>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-gray-900">
-                          {validationResults.totalFiles}
-                        </div>
-                        <div className="text-sm text-gray-600">Arquivos</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-gray-900">
-                          {validationResults.metrics.contentNodes}
-                        </div>
-                        <div className="text-sm text-gray-600">Nós de Conteúdo</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-gray-900">
-                          {validationResults.issues.length}
-                        </div>
-                        <div className="text-sm text-gray-600">Problemas</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-2xl font-bold text-green-600">
-                          {validationResults.compliance}%
-                        </div>
-                        <div className="text-sm text-gray-600">Conformidade</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Issues */}
-                {validationResults.issues.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center">
-                        <AlertTriangle className="w-5 h-5 mr-2" />
-                        Problemas Encontrados ({validationResults.issues.length})
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {validationResults.issues.map((issue, index) => (
-                          <div key={index} className="border rounded-lg p-4">
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-start space-x-3">
-                                {getIssueIcon(issue.type)}
-                                <div className="flex-1">
-                                  <p className="font-medium text-gray-900">
-                                    {issue.message}
-                                  </p>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    Arquivo: {issue.file}
-                                  </p>
-                                </div>
-                              </div>
-                              {getSeverityBadge(issue.severity)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Actions */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Ações</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex space-x-4">
-                      <Button className="flex items-center">
-                        <Download className="w-4 h-4 mr-2" />
-                        Baixar Relatório
-                      </Button>
-                      <Button variant="outline">
-                        Validar Outro Pacote
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
+      {validationResults.consoleReport && (
+        <div className="mb-4">
+          <pre className="bg-gray-100 p-4 rounded-lg text-sm overflow-x-auto whitespace-pre-wrap">
+            {validationResults.consoleReport}
+          </pre>
         </div>
+      )}
+      <div className="flex gap-4 mt-4">
+        <Button className="flex items-center">
+          <Download className="w-4 h-4 mr-2" />
+          Baixar Relatório
+        </Button>
+        <Button 
+          variant="outline"
+          onClick={() => {
+            setValidationResults(null);
+            setValidationLog('');
+            setSelectedFile(null);
+          }}
+        >
+          Validar Outro Pacote
+        </Button>
       </div>
     </div>
+  ) : null;
+
+  // History Section (apenas se tab ativa for 'history')
+  const historySection = (activeTab === 'history') ? (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-semibold">Histórico de Validações</h3>
+      </div>
+      {validationHistory.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">Nenhuma validação realizada ainda</div>
+      ) : (
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pacote</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Duração</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Erros</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avisos</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {validationHistory.map((validation) => (
+              <tr key={validation.id}>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">{validation.packageName}</div>
+                  <div className="text-xs text-gray-500 font-mono">{validation.packagePath}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(validation.status)}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{validation.date ? new Date(validation.date).toLocaleString('pt-BR') : '-'}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{validation.duration}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{validation.errors}</td>
+                <td className="px-6 py-4 whitespace-nowrap">{validation.warnings}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  ) : null;
+
+  return (
+    <AnalysisLayout
+      title="Validador Adobe AEM"
+      description="Valide pacotes de conteúdo Adobe Experience Manager de forma simples e profissional."
+      onBack={onBack}
+      systemHealth={null}
+      inputSection={inputSection}
+      onStart={startValidation}
+      isRunning={isValidating}
+      log={validationLog}
+      resultSection={resultSection}
+      historySection={historySection}
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+    />
   );
 };
 

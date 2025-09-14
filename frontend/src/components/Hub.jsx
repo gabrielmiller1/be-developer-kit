@@ -41,9 +41,12 @@ const Hub = ({ onSelectTool, systemHealth }) => {
       features: [
         'Validação de nomenclatura e versão',
         'Validação de estrutura de pacotes',
-        'Conformidade com padrões Bradesco'
+        'Conformidade com padrões Bradesco',
+        'Análise de filtros e permissões',
+        'Validação GraphQL queries',
+        'Relatórios detalhados'
       ],
-      status: 'coming-soon',
+      status: 'online',
       category: 'Análise de Código'
     },
     {
