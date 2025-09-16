@@ -21,48 +21,46 @@ class AdobeAemValidator {
     this.info = [];
   }
 
-
-  addError(message, file = null, code = null) {
-    this.errors.push({ type: 'error', severity: 'high', message, file, ...(code ? { code } : {}) });
+  addError(message, file = null) {
+    this.errors.push({ type: 'error', severity: 'high', message, file });
   }
 
-  addWarning(message, file = null, code = null) {
-    this.warnings.push({ type: 'warning', severity: 'medium', message, file, ...(code ? { code } : {}) });
+  addWarning(message, file = null) {
+    this.warnings.push({ type: 'warning', severity: 'medium', message, file });
   }
 
   addInfo(message, file = null) {
     this.info.push({ type: 'info', severity: 'low', message, file });
   }
 
-  async validatePackage(packagePath, originalFilename = null) {
+  async validatePackage(packagePath) {
     this.reset();
     
     try {
       // 1. Verificar se o arquivo existe
       if (!fs.existsSync(packagePath)) {
-        this.addError(`Arquivo não encontrado: ${packagePath}`, null, 'arquivo-nao-encontrado');
+        this.addError(`Arquivo não encontrado: ${packagePath}`);
         return this.getResults();
       }
 
       // 2. Verificar tamanho do arquivo
       const stats = fs.statSync(packagePath);
       if (stats.size > this.maxFileSize) {
-        this.addError(`Arquivo muito grande: ${(stats.size / 1024 / 1024).toFixed(2)}MB (máximo: 200MB)`, null, 'arquivo-muito-grande');
+        this.addError(`Arquivo muito grande: ${(stats.size / 1024 / 1024).toFixed(2)}MB (máximo: 200MB)`);
       } else {
         this.addInfo(`Tamanho do arquivo: ${(stats.size / 1024 / 1024).toFixed(2)}MB`);
       }
 
       // 3. Validar nome do pacote
-      // Permitir que o nome original enviado seja usado (evita prefixos temporários)
-      const fileName = originalFilename || path.basename(packagePath);
+      const fileName = path.basename(packagePath);
       if (!this.packageNameRegex.test(fileName)) {
-        this.addError(`Nome do pacote inválido: ${fileName}. Deve seguir o padrão: [a-z0-9-]+(content|apps|conf)-YYYYMMDD-*.zip`, null, 'nome-pacote-invalido');
+        this.addError(`Nome do pacote inválido: ${fileName}. Deve seguir o padrão: [a-z0-9-]+(content|apps|conf)-YYYYMMDD-*.zip`);
       } else {
         this.addInfo(`Nome do pacote válido: ${fileName}`);
       }
 
       // 4. Extrair projeto do nome do pacote
-  const projectMatch = fileName.match(/^([a-z0-9-]+)-(content|apps|conf)-/);
+      const projectMatch = fileName.match(/^([a-z0-9-]+)-(content|apps|conf)-/);
       const projectName = projectMatch ? projectMatch[1] : null;
 
       // 5. Descompactar e validar conteúdo
@@ -71,7 +69,7 @@ class AdobeAemValidator {
 
       // Verificar número de arquivos
       if (zipEntries.length > this.maxFiles) {
-        this.addWarning(`Muitos arquivos no pacote: ${zipEntries.length} (recomendado: máximo ${this.maxFiles})`, null, 'muitos-arquivos');
+        this.addWarning(`Muitos arquivos no pacote: ${zipEntries.length} (recomendado: máximo ${this.maxFiles})`);
       } else {
         this.addInfo(`Número de arquivos: ${zipEntries.length}`);
       }
@@ -107,7 +105,7 @@ class AdobeAemValidator {
       if (found) {
         this.addInfo(`Estrutura encontrada: ${requiredPath}`);
       } else {
-        this.addError(`Estrutura obrigatória não encontrada: ${requiredPath}`, null, 'estrutura-obrigatoria-ausente');
+        this.addError(`Estrutura obrigatória não encontrada: ${requiredPath}`);
       }
     }
   }
@@ -116,7 +114,7 @@ class AdobeAemValidator {
     const filterEntry = zipEntries.find(entry => entry.entryName === 'META-INF/vault/filter.xml');
     
     if (!filterEntry) {
-      this.addError('Arquivo filter.xml não encontrado em META-INF/vault/', null, 'filter-xml-ausente');
+      this.addError('Arquivo filter.xml não encontrado em META-INF/vault/');
       return;
     }
 
@@ -130,7 +128,7 @@ class AdobeAemValidator {
       const filters = result?.workspaceFilter?.filter || [];
       
       if (filters.length === 0) {
-        this.addWarning('Nenhum filtro encontrado no filter.xml', null, 'nenhum-filtro');
+        this.addWarning('Nenhum filtro encontrado no filter.xml');
         return;
       }
 
@@ -143,21 +141,20 @@ class AdobeAemValidator {
         
         // Verificar filtros duplicados
         if (seenFilters.has(root)) {
-          this.addError(`Filtro duplicado encontrado: ${root}`, 'META-INF/vault/filter.xml', 'filtro-duplicado');
+          this.addError(`Filtro duplicado encontrado: ${root}`, 'META-INF/vault/filter.xml');
           continue;
         }
         seenFilters.add(root);
 
         // Verificar paths proibidos
-
         if (forbiddenPaths.some(forbidden => root.startsWith(forbidden))) {
-          this.addError(`Path proibido encontrado: ${root}`, 'META-INF/vault/filter.xml', 'path-proibido');
+          this.addError(`Path proibido encontrado: ${root}`, 'META-INF/vault/filter.xml');
           continue;
         }
 
         // Verificar filtros genéricos
         if (genericPaths.includes(root)) {
-          this.addError(`Filtro muito genérico: ${root}. Use paths específicos como /content/${projectName || '<project>'}`, 'META-INF/vault/filter.xml', 'filtro-generico');
+          this.addError(`Filtro muito genérico: ${root}. Use paths específicos como /content/${projectName || '<project>'}`, 'META-INF/vault/filter.xml');
           continue;
         }
 
@@ -167,7 +164,7 @@ class AdobeAemValidator {
           const isValidPath = expectedPaths.some(expected => root.startsWith(expected));
           
           if (!isValidPath) {
-            this.addWarning(`Filtro fora do escopo do projeto '${projectName}': ${root}`, 'META-INF/vault/filter.xml', 'filtro-fora-escopo');
+            this.addWarning(`Filtro fora do escopo do projeto '${projectName}': ${root}`, 'META-INF/vault/filter.xml');
           } else {
             this.addInfo(`Filtro válido: ${root}`);
           }
@@ -183,7 +180,7 @@ class AdobeAemValidator {
     const propsEntry = zipEntries.find(entry => entry.entryName === 'META-INF/vault/properties.xml');
     
     if (!propsEntry) {
-      this.addError('Arquivo properties.xml não encontrado em META-INF/vault/', null, 'properties-xml-ausente');
+      this.addError('Arquivo properties.xml não encontrado em META-INF/vault/');
       return;
     }
 
@@ -209,14 +206,14 @@ class AdobeAemValidator {
         if (propMap[prop]) {
           this.addInfo(`Propriedade '${prop}' encontrada: ${propMap[prop]}`);
         } else {
-          this.addError(`Propriedade obrigatória '${prop}' não encontrada`, 'META-INF/vault/properties.xml', 'propriedade-obrigatoria-ausente');
+          this.addError(`Propriedade obrigatória '${prop}' não encontrada`, 'META-INF/vault/properties.xml');
         }
       }
 
       // Validar versão
       if (propMap.version) {
         if (!this.semverRegex.test(propMap.version)) {
-          this.addWarning(`Versão não segue padrão semver: ${propMap.version}`, 'META-INF/vault/properties.xml', 'versao-invalida');
+          this.addWarning(`Versão não segue padrão semver: ${propMap.version}`, 'META-INF/vault/properties.xml');
         } else {
           this.addInfo(`Versão válida: ${propMap.version}`);
         }
@@ -231,7 +228,7 @@ class AdobeAemValidator {
     const jcrRootEntries = zipEntries.filter(entry => entry.entryName.startsWith('jcr_root/'));
     
     if (jcrRootEntries.length === 0) {
-      this.addWarning('Nenhum conteúdo encontrado em jcr_root/', null, 'conteudo-jcr-ausente');
+      this.addWarning('Nenhum conteúdo encontrado em jcr_root/');
       return;
     }
 
@@ -245,14 +242,14 @@ class AdobeAemValidator {
       
       // Arquivos indesejados
       if (unwantedFiles.includes(fileName)) {
-        this.addWarning(`Arquivo indesejado encontrado: ${entry.entryName}`, null, 'arquivo-indesejado');
+        this.addWarning(`Arquivo indesejado encontrado: ${entry.entryName}`);
         continue;
       }
 
       // OSGi configs
       if (entry.entryName.includes('/apps/') && entry.entryName.includes('/config/')) {
         osgiConfigs++;
-        this.addError(`Configuração OSGi encontrada: ${entry.entryName}`, null, 'configuracao-osgi');
+        this.addError(`Configuração OSGi encontrada: ${entry.entryName}`);
         continue;
       }
 
@@ -266,7 +263,7 @@ class AdobeAemValidator {
     this.addInfo(`Arquivos .content.xml analisados: ${contentFiles}`);
     
     if (osgiConfigs > 0) {
-      this.addError(`Total de configurações OSGi encontradas: ${osgiConfigs} (não permitidas)`, null, 'configuracao-osgi-total');
+      this.addError(`Total de configurações OSGi encontradas: ${osgiConfigs} (não permitidas)`);
     }
   }
 
@@ -283,22 +280,29 @@ class AdobeAemValidator {
             const value = obj[key];
             
             if (key === 'cq:lastModifiedBy' && value === 'admin') {
-              this.addWarning(`Propriedade perigosa: cq:lastModifiedBy="admin"`, entry.entryName, 'propriedade-perigosa-admin');
+              this.addWarning(`Propriedade perigosa: cq:lastModifiedBy="admin"`, entry.entryName);
             }
             
             if (key === 'cq:template' && projectName) {
               if (!value.includes(projectName)) {
-                this.addWarning(`Template fora do projeto: ${value} (esperado: contendo '${projectName}')`, entry.entryName, 'template-fora-projeto');
+                this.addWarning(`Template fora do projeto: ${value} (esperado: contendo '${projectName}')`, entry.entryName);
               }
             }
             
             if (key === 'cq:designPath' && projectName) {
               if (!value.includes(projectName)) {
-                this.addWarning(`Design path fora do projeto: ${value}`, entry.entryName, 'design-path-fora-projeto');
+                this.addWarning(`Design path fora do projeto: ${value}`, entry.entryName);
               }
             }
             
-            // Mixin validation removed: no longer checking jcr:mixinTypes
+            if (key === 'jcr:mixinTypes') {
+              const mixins = Array.isArray(value) ? value : [value];
+              mixins.forEach(mixin => {
+                if (mixin !== 'mix:versionable') {
+                  this.addWarning(`Mixin não permitido: ${mixin}`, entry.entryName);
+                }
+              });
+            }
             
             if (typeof value === 'object') {
               checkProperties(value, `${path}${key}.`);
@@ -335,7 +339,7 @@ class AdobeAemValidator {
       // Validar nome do arquivo
       const expectedPattern = `${projectName}_`;
       if (!fileName.startsWith(expectedPattern)) {
-        this.addError(`Nome da query GraphQL inválido: ${fileName}. Deve começar com '${expectedPattern}'`, entry.entryName, 'nome-query-graphql-invalido');
+        this.addError(`Nome da query GraphQL inválido: ${fileName}. Deve começar com '${expectedPattern}'`, entry.entryName);
         continue;
       }
 
@@ -344,7 +348,7 @@ class AdobeAemValidator {
         
         // Validar wildcards
         if (queryContent.includes('*')) {
-          this.addError(`Query GraphQL contém wildcard (*): não permitido`, entry.entryName, 'graphql-wildcard');
+          this.addError(`Query GraphQL contém wildcard (*): não permitido`, entry.entryName);
         }
 
         // Validar referências a outros projetos
@@ -353,7 +357,7 @@ class AdobeAemValidator {
           contentMatches.forEach(match => {
             const referencedProject = match.replace('/content/', '');
             if (referencedProject !== projectName) {
-              this.addError(`Query referencia outro projeto: ${match}`, entry.entryName, 'graphql-referencia-outro-projeto');
+              this.addError(`Query referencia outro projeto: ${match}`, entry.entryName);
             }
           });
         }
@@ -361,7 +365,7 @@ class AdobeAemValidator {
         // Contar queries no arquivo
         const queryCount = (queryContent.match(/query\s+/gi) || []).length;
         if (queryCount > 1) {
-          this.addWarning(`Arquivo contém ${queryCount} queries (recomendado: 1 por arquivo)`, entry.entryName, 'graphql-multiplas-queries');
+          this.addWarning(`Arquivo contém ${queryCount} queries (recomendado: 1 por arquivo)`, entry.entryName);
         } else if (queryCount === 1) {
           this.addInfo(`Query GraphQL válida: ${fileName}`);
         }

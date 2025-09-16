@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Problemas comuns em pacotes Adobe - Explicações e Soluções</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    h1 { color: #b91c1c; }
+    h2 { margin-top: 2rem; color: #2563eb; }
+    .correcao { background: #f3f4f6; padding: 1rem; border-radius: 8px; margin-top: 1rem; }
+    nav { margin-bottom: 2rem; }
+    nav ul { list-style: none; padding: 0; }
+    nav li { margin-bottom: 0.5rem; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <h1>Problemas comuns em pacotes Adobe</h1>
+  <p>Veja abaixo explicações e soluções para os principais problemas detectados em pacotes Adobe.</p>
+  <nav>
+    <strong>Índice:</strong>
+    <ul>
+      <li><a href="#filtro-generico">Filtro muito genérico</a></li>
+      <li><a href="#path-proibido">Path proibido no filtro</a></li>
+      <li><a href="#filtro-fora-escopo">Filtro fora do escopo do projeto</a></li>
+      <li><a href="#filtro-duplicado">Filtro duplicado</a></li>
+      <li><a href="#propriedade-obrigatoria-ausente">Propriedade obrigatória ausente</a></li>
+      <li><a href="#versao-invalida">Versão inválida</a></li>
+      <li><a href="#configuracao-osgi">Configuração OSGi encontrada</a></li>
+      <li><a href="#propriedade-perigosa-admin">Propriedade perigosa (admin)</a></li>
+      <li><a href="#template-fora-projeto">Template fora do projeto</a></li>
+      <li><a href="#design-path-fora-projeto">Design path fora do projeto</a></li>
+      <li><a href="#mixin-nao-permitido">Mixin não permitido</a></li>
+      <li><a href="#nome-query-graphql-invalido">Nome da query GraphQL inválido</a></li>
+      <li><a href="#graphql-wildcard">Query GraphQL com wildcard</a></li>
+      <li><a href="#graphql-referencia-outro-projeto">Query GraphQL referencia outro projeto</a></li>
+      <li><a href="#graphql-multiplas-queries">Múltiplas queries no arquivo</a></li>
+      <li><a href="#arquivo-indesejado">Arquivo indesejado</a></li>
+      <li><a href="#estrutura-obrigatoria-ausente">Estrutura obrigatória ausente</a></li>
+      <li><a href="#arquivo-nao-encontrado">Arquivo não encontrado</a></li>
+      <li><a href="#arquivo-muito-grande">Arquivo muito grande</a></li>
+      <li><a href="#nome-pacote-invalido">Nome do pacote inválido</a></li>
+      <li><a href="#muitos-arquivos">Muitos arquivos no pacote</a></li>
+      <li><a href="#filter-xml-ausente">Filter.xml ausente</a></li>
+      <li><a href="#properties-xml-ausente">Properties.xml ausente</a></li>
+      <li><a href="#conteudo-jcr-ausente">Conteúdo JCR ausente</a></li>
+      <li><a href="#configuracao-osgi-total">Configurações OSGi encontradas</a></li>
+      <li><a href="#imagem-sem-alt">Imagem sem atributo alt</a></li>
+      <li><a href="#link-sem-descricao">Link sem descrição</a></li>
+      <li><a href="#contraste-insuficiente">Contraste insuficiente</a></li>
+      <!-- Adicione mais problemas aqui -->
+    </ul>
+  </nav>
+
+  <h2 id="filtro-duplicado">Filtro duplicado</h2>
+  <p>O mesmo path está sendo filtrado múltiplas vezes no filter.xml.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova filtros duplicados, mantendo apenas uma entrada por path.</li>
+    </ul>
+  </div>
+
+  <h2 id="propriedade-obrigatoria-ausente">Propriedade obrigatória ausente</h2>
+  <p>Propriedades essenciais estão faltando no arquivo properties.xml.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Adicione as propriedades obrigatórias (name, group, version) no properties.xml.</li>
+    </ul>
+    <pre><code>&lt;properties&gt;
+  &lt;entry key="name"&gt;meu-pacote&lt;/entry&gt;
+  &lt;entry key="group"&gt;meu.grupo&lt;/entry&gt;
+  &lt;entry key="version"&gt;1.0.0&lt;/entry&gt;
+&lt;/properties&gt;</code></pre>
+  </div>
+
+  <h2 id="versao-invalida">Versão inválida</h2>
+  <p>A versão do pacote não segue o padrão Semantic Versioning (semver).</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Use o formato MAJOR.MINOR.PATCH (ex: 1.0.0) para a versão.</li>
+    </ul>
+  </div>
+
+  <h2 id="configuracao-osgi">Configuração OSGi encontrada</h2>
+  <p>Configurações OSGi não devem ser incluídas em pacotes de conteúdo.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova arquivos de configuração OSGi dos pacotes de conteúdo.</li>
+    </ul>
+  </div>
+
+  <h2 id="propriedade-perigosa-admin">Propriedade perigosa (admin)</h2>
+  <p>O conteúdo foi modificado pelo usuário admin, o que pode causar problemas de segurança.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova ou altere a propriedade cq:lastModifiedBy="admin".</li>
+    </ul>
+  </div>
+
+  <h2 id="template-fora-projeto">Template fora do projeto</h2>
+  <p>O template referenciado não pertence ao projeto atual.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Use apenas templates do projeto atual ou garanta que o template referenciado existe.</li>
+    </ul>
+  </div>
+
+  <h2 id="design-path-fora-projeto">Design path fora do projeto</h2>
+  <p>O caminho de design não pertence ao projeto atual.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Use apenas caminhos de design do projeto atual.</li>
+    </ul>
+  </div>
+
+  <h2 id="mixin-nao-permitido">Mixin não permitido</h2>
+  <p>Mixins JCR além de mix:versionable não são permitidos.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova mixins não permitidos, mantendo apenas mix:versionable se necessário.</li>
+    </ul>
+    <pre><code>&lt;jcr:mixinTypes&gt;
+  &lt;jcr:mixinType&gt;mix:versionable&lt;/jcr:mixinType&gt;
+&lt;/jcr:mixinTypes&gt;</code></pre>
+  </div>
+
+  <h2 id="nome-query-graphql-invalido">Nome da query GraphQL inválido</h2>
+  <p>O nome da query GraphQL deve seguir o padrão do projeto.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Renomeie o arquivo para começar com o nome do projeto seguido de underscore.</li>
+      <li>Exemplo: meu-projeto_minha-query.graphql</li>
+    </ul>
+  </div>
+
+  <h2 id="graphql-wildcard">Query GraphQL com wildcard</h2>
+  <p>Queries GraphQL não podem conter wildcards (*).</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova wildcards e seja específico nos campos da query.</li>
+    </ul>
+  </div>
+
+  <h2 id="graphql-referencia-outro-projeto">Query GraphQL referencia outro projeto</h2>
+  <p>Queries GraphQL devem referenciar apenas conteúdo do projeto atual.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Ajuste os paths para referenciar apenas conteúdo do projeto atual.</li>
+    </ul>
+  </div>
+
+  <h2 id="graphql-multiplas-queries">Múltiplas queries no arquivo</h2>
+  <p>Arquivos GraphQL devem conter apenas uma query.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Separe cada query em um arquivo diferente.</li>
+    </ul>
+  </div>
+
+  <h2 id="arquivo-indesejado">Arquivo indesejado</h2>
+  <p>Arquivos temporários ou de sistema foram incluídos no pacote.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova arquivos como .DS_Store, Thumbs.db, .gitkeep, etc.</li>
+    </ul>
+  </div>
+
+  <h2 id="estrutura-obrigatoria-ausente">Estrutura obrigatória ausente</h2>
+  <p>Estruturas essenciais do pacote Adobe estão faltando.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Garanta que META-INF/vault/ e jcr_root/ estejam presentes.</li>
+    </ul>
+  </div>
+
+  <h2 id="arquivo-nao-encontrado">Arquivo não encontrado</h2>
+  <p>O arquivo especificado não foi encontrado no sistema.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Verifique se o caminho do arquivo está correto.</li>
+    </ul>
+  </div>
+
+  <h2 id="arquivo-muito-grande">Arquivo muito grande</h2>
+  <p>O tamanho do pacote excede o limite permitido.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Reduza o tamanho do pacote para no máximo 200MB.</li>
+      <li>Divida em pacotes menores se necessário.</li>
+    </ul>
+  </div>
+
+  <h2 id="nome-pacote-invalido">Nome do pacote inválido</h2>
+  <p>O nome do pacote não segue o padrão Adobe AEM.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Use o formato: [a-z0-9-]+(content|apps|conf)-YYYYMMDD-*.zip</li>
+      <li>Exemplo: meu-projeto-content-20240101-v1.0.0.zip</li>
+    </ul>
+  </div>
+
+  <h2 id="muitos-arquivos">Muitos arquivos no pacote</h2>
+  <p>O pacote contém um número excessivo de arquivos.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Reduza o número de arquivos ou divida em pacotes menores.</li>
+    </ul>
+  </div>
+
+  <h2 id="filter-xml-ausente">Filter.xml ausente</h2>
+  <p>O arquivo filter.xml é obrigatório em pacotes Adobe.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Crie o arquivo META-INF/vault/filter.xml com os filtros apropriados.</li>
+    </ul>
+  </div>
+
+  <h2 id="properties-xml-ausente">Properties.xml ausente</h2>
+  <p>O arquivo properties.xml é obrigatório em pacotes Adobe.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Crie o arquivo META-INF/vault/properties.xml com as propriedades do pacote.</li>
+    </ul>
+  </div>
+
+  <h2 id="conteudo-jcr-ausente">Conteúdo JCR ausente</h2>
+  <p>Não foi encontrado conteúdo na pasta jcr_root.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Adicione conteúdo válido na pasta jcr_root do pacote.</li>
+    </ul>
+  </div>
+
+  <h2 id="configuracao-osgi-total">Configurações OSGi encontradas</h2>
+  <p>Pacotes de conteúdo não devem incluir configurações OSGi.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova todas as configurações OSGi do pacote.</li>
+    </ul>
+  </div>
+
+  <h2 id="filtro-generico">Filtro muito genérico</h2>
+  <p>Filtros muito genéricos no filter.xml podem incluir conteúdo indesejado ou fora do escopo do projeto.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Use paths específicos como /content/nome-do-projeto, /apps/nome-do-projeto ou /conf/nome-do-projeto.</li>
+      <li>Evite filtros genéricos como /content, /apps ou /conf.</li>
+    </ul>
+    <pre><code>&lt;filter root="/content/meu-projeto"/&gt;</code></pre>
+  </div>
+
+  <h2 id="path-proibido">Path proibido no filtro</h2>
+  <p>Paths como /libs e /etc não devem ser incluídos em pacotes de conteúdo, pois são áreas do sistema.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Remova filtros que apontem para /libs ou /etc.</li>
+      <li>Use apenas paths específicos do seu projeto.</li>
+    </ul>
+  </div>
+
+  <h2 id="filtro-fora-escopo">Filtro fora do escopo do projeto</h2>
+  <p>O filtro aponta para um path que não pertence ao projeto atual.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Verifique se o path do filtro corresponde ao nome do projeto extraído do nome do pacote.</li>
+      <li>Exemplo: se o pacote é "meu-projeto-content-20240101-v1.0.0.zip", use /content/meu-projeto.</li>
+    </ul>
+  </div>
+
+  <h2 id="imagem-sem-alt">Imagem sem atributo alt</h2>
+  <p>O atributo <code>alt</code> em imagens é essencial para acessibilidade, pois descreve o conteúdo da imagem para pessoas que utilizam leitores de tela.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Sempre adicione o atributo <code>alt</code> em todas as imagens.</li>
+      <li>Descreva brevemente o conteúdo ou função da imagem.</li>
+      <li>Se a imagem for decorativa, use <code>alt=""</code>.</li>
+    </ul>
+    <pre><code>&lt;img src="logo.png" alt="Logo da empresa" /&gt;</code></pre>
+  </div>
+
+  <h2 id="link-sem-descricao">Link sem descrição</h2>
+  <p>Links devem ter descrições claras para que todos os usuários entendam seu propósito, especialmente quem utiliza leitores de tela.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Evite textos genéricos como "clique aqui".</li>
+      <li>Descreva o destino ou ação do link.</li>
+    </ul>
+    <pre><code>&lt;a href="/contato"&gt;Fale conosco&lt;/a&gt;</code></pre>
+  </div>
+
+  <h2 id="contraste-insuficiente">Contraste insuficiente</h2>
+  <p>O contraste entre texto e fundo deve ser suficiente para garantir a leitura por todos os usuários, inclusive pessoas com baixa visão.</p>
+  <div class="correcao">
+    <strong>Como corrigir:</strong>
+    <ul>
+      <li>Utilize ferramentas para checar o contraste.</li>
+      <li>Garanta contraste mínimo de 4.5:1 para textos normais.</li>
+    </ul>
+    <pre><code>// Exemplo de bom contraste
+Cor de fundo: #ffffff
+Cor do texto: #222222</code></pre>
+  </div>
+
+  <!-- Adicione mais problemas e soluções conforme necessário -->
+</body>
+</html>

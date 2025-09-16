@@ -7,6 +7,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
 const AdobeAemValidator = require('./services/adobeAemValidator');
+const PDFDocument = require('pdfkit');
 
 // Configurar CORS
 fastify.register(require('@fastify/cors'), {
@@ -107,11 +108,19 @@ async function getSonarToken() {
 // Função para executar validação Adobe AEM real
 async function runAdobeAemValidation(packagePath, analysisId) {
   return new Promise(async (resolve, reject) => {
-    const packageName = path.basename(packagePath);
     const startTime = new Date();
     
     try {
       const analysis = activeAnalyses.get(analysisId);
+      // Determine packageName: prefer original filename saved at upload time,
+      // otherwise use the basename and strip the temporary upload prefix if present
+      let packageName = path.basename(packagePath);
+      if (analysis && analysis.originalFilename) {
+        packageName = analysis.originalFilename;
+      } else if (/^adobe-[0-9a-fA-F-]{36}-/.test(packageName)) {
+        // remove prefix like: adobe-<uuid>-
+        packageName = packageName.replace(/^adobe-[0-9a-fA-F-]{36}-/, '');
+      }
       if (analysis) {
         analysis.status = 'running';
         analysis.logs.push(`Iniciando validação Adobe AEM do pacote: ${packageName}`);
@@ -141,7 +150,8 @@ async function runAdobeAemValidation(packagePath, analysisId) {
         analysis.logs.push('🔗 Verificando queries GraphQL...');
       }
 
-      const results = await validator.validatePackage(actualPath);
+  // Pass original filename (or cleaned packageName) to the validator so it validates by the real name
+  const results = await validator.validatePackage(actualPath, packageName);
       const endTime = new Date();
       const duration = `${Math.round((endTime - startTime) / 1000)}s`;
 
@@ -254,8 +264,9 @@ function saveAdobeValidationToDatabase(analysis) {
     
     stmt.run(
       analysis.id,
-      analysis.projectPath,
-      path.basename(analysis.projectPath),
+  analysis.projectPath,
+  // Use original uploaded filename when available, otherwise prefer result packageName, fallback to basename(path)
+  analysis.originalFilename || analysis.result?.packageName || path.basename(analysis.projectPath),
       analysis.qualityGateStatus === 'PASSED' ? 'passed' : 'failed',
       summary.errors,
       summary.warnings,
@@ -486,6 +497,145 @@ async function runSonarAnalysis(projectPath, analysisId) {
   });
 }
 
+// Helper: generate Adobe validation PDF from results
+function generateAdobePdfBuffer(validation) {
+  return new Promise((resolve, reject) => {
+    try {
+      fastify.log.info('[PDF] Iniciando geração do PDF com dados: (redacted)');
+
+      const results = validation?.validationResults || validation; // accept either wrapped or raw
+      const packageName = validation?.packageName || validation?.package_name || 'pacote';
+
+      if (!validation) throw new Error('Dados de validação não fornecidos');
+      if (!results) throw new Error('Resultados de validação não fornecidos');
+
+      let normalizedResults = results;
+      if (typeof normalizedResults === 'string') {
+        try { normalizedResults = JSON.parse(normalizedResults); } catch (e) { /* keep string */ }
+      }
+
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const chunks = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+
+      // Header (Fortify-like)
+      const headerHeight = 72;
+      doc.rect(0, 0, doc.page.width, headerHeight).fill('#0f172a');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Relatório de Validação Adobe AEM', 60, 22);
+      doc.font('Helvetica').fontSize(9).fillColor('#d1d5db').text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, doc.page.width - 200, 28, { width: 140, align: 'right' });
+      doc.moveDown(2);
+      doc.fillColor('#000000');
+
+      // Metadata panel
+      let y = headerHeight + 20;
+      const panelX = 50;
+      const panelW = doc.page.width - 100;
+      doc.roundedRect(panelX, y, panelW, 60, 4).fill('#f8fafc').stroke('#e6eef6');
+      doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(11).text('Informações do Pacote', panelX + 10, y + 8);
+      doc.font('Helvetica').fontSize(10).text(`Arquivo: ${packageName}`, panelX + 10, y + 26);
+      doc.font('Helvetica').fontSize(10).text(`Status: ${(normalizedResults?.status || 'unknown').toString().toUpperCase()}`, panelX + 220, y + 26);
+      y += 80;
+
+      // Summary cards
+      const cardW = (doc.page.width - 120) / 4;
+      const cardH = 48;
+      const summary = normalizedResults?.summary || { errors: 0, warnings: 0, info: 0, total: 0 };
+
+      function drawCard(x, label, value, bg, fg) {
+        doc.roundedRect(x, y, cardW - 10, cardH, 4).fill(bg).stroke(bg);
+        doc.fillColor(fg).font('Helvetica-Bold').fontSize(14).text(String(value), x + 10, y + 10);
+        doc.fillColor('#0f172a').font('Helvetica').fontSize(9).text(label, x + 10, y + 30);
+      }
+
+      drawCard(panelX, 'Erros', summary.errors, '#fff1f2', '#9f1239');
+      drawCard(panelX + cardW, 'Avisos', summary.warnings, '#fffbeb', '#92400e');
+      drawCard(panelX + 2 * cardW, 'Informações', summary.info, '#ecfeff', '#0369a1');
+      drawCard(panelX + 3 * cardW, 'Total', summary.total, '#f8fafc', '#111827');
+
+      y += cardH + 30;
+
+      // Issues extraction
+      const issues = normalizedResults?.issues || normalizedResults?.errors || [];
+      const infos = Array.isArray(issues) ? issues.filter(i => (i.type || '').toString().toLowerCase() === 'info') : [];
+      const problems = Array.isArray(issues) ? issues.filter(i => { const t = (i.type || '').toString().toLowerCase(); return t === 'error' || t === 'warning' || (!i.type && (i.severity === 'error' || i.severity === 'warning')); }) : [];
+
+      // Informações filtradas (name/group/version, tamanho, arquivos .content.xml analisados)
+      const filteredInfos = (infos || []).filter(i => {
+        const text = (i.message || i.description || JSON.stringify(i) || '').toString();
+        return /tamanho|número de arquivos|numero de arquivos|propriedade.*name|propriedade.*group|propriedade.*version|\.content\.xml|analisad/i.test(text);
+      });
+
+      if (filteredInfos.length > 0) {
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a').text('Informações do Pacote', panelX, y);
+        y += 18;
+        filteredInfos.forEach((inf, idx) => {
+          if (y > doc.page.height - 120) { doc.addPage(); y = 60; }
+          const text = (inf.message || inf.description || JSON.stringify(inf)).toString();
+          doc.font('Helvetica').fontSize(9).fillColor('#094067').text(`• ${text}`, panelX + 6, y, { width: panelW - 20 });
+          y += 14;
+        });
+        y += 10;
+      }
+
+      // Problems section with grouping
+      function groupProblemsByType(issuesList) {
+        const grouped = {};
+        for (const issue of (issuesList || [])) {
+          const type = issue.code || issue.type || (issue.rule ? issue.rule : 'outro');
+          if (!grouped[type]) grouped[type] = [];
+          grouped[type].push(issue);
+        }
+        return grouped;
+      }
+
+      const grouped = groupProblemsByType(problems);
+      if (Object.keys(grouped).length > 0) {
+        if (y > doc.page.height - 180) { doc.addPage(); y = 60; }
+        doc.font('Helvetica-Bold').fontSize(12).fillColor('#0f172a').text('Problemas Encontrados', panelX, y);
+        y += 18;
+
+        for (const [type, list] of Object.entries(grouped)) {
+          if (y > doc.page.height - 140) { doc.addPage(); y = 60; }
+          doc.font('Helvetica-Bold').fontSize(10).fillColor('#0b5ea8').text(`${type} (${list.length})`, panelX + 4, y);
+          y += 14;
+
+          list.forEach((issue, i) => {
+            if (y > doc.page.height - 120) { doc.addPage(); y = 60; }
+            const sev = (issue.type || issue.severity || 'info').toString().toUpperCase();
+            const msg = (issue.message || issue.description || JSON.stringify(issue)).toString();
+            doc.font('Helvetica').fontSize(9).fillColor('#111827').text(`${i + 1}. [${sev}] ${msg}`, panelX + 10, y, { width: panelW - 40 });
+            y += 12;
+            if (issue.file) {
+              doc.font('Helvetica-Oblique').fontSize(8).fillColor('#6b7280').text(`Arquivo: ${issue.file}`, panelX + 14, y, { width: panelW - 60 });
+              y += 10;
+            }
+          });
+          y += 8;
+        }
+      }
+
+      // Console report (small preview)
+      if (validation.consoleReport) {
+        if (y > doc.page.height - 200) { doc.addPage(); y = 60; }
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#0f172a').text('Relatório (console) - preview', panelX, y);
+        y += 14;
+        const preview = (validation.consoleReport || '').toString().slice(0, 8000);
+        doc.font('Helvetica').fontSize(8).fillColor('#111827').text(preview, panelX, y, { width: panelW });
+      }
+
+      // Footer
+      const footerY = doc.page.height - 40;
+      doc.font('Helvetica').fontSize(8).fillColor('#6b7280').text('Gerado pelo BE Developer Kit - Bradesco', 50, footerY, { align: 'center', width: doc.page.width - 100 });
+
+      doc.end();
+    } catch (err) {
+      fastify.log.error('[PDF] Erro na geração do PDF:', err);
+      reject(err);
+    }
+  });
+}
+
 // Rota para listar diretórios (simulação para desenvolvimento)
 fastify.get('/api/directories', async (request, reply) => {
   const { path: dirPath = '/Users' } = request.query;
@@ -534,7 +684,7 @@ fastify.post('/api/adobe/upload-validate', async (request, reply) => {
       return reply.code(400).send({ error: 'Arquivo muito grande. Máximo 200MB permitido.' });
     }
 
-    // Salvar arquivo temporariamente
+  // Salvar arquivo temporariamente
     const analysisId = uuidv4();
     const tempFilePath = `/tmp/adobe-${analysisId}-${data.filename}`;
     
@@ -545,10 +695,11 @@ fastify.post('/api/adobe/upload-validate', async (request, reply) => {
     
     fastify.log.info(`Arquivo salvo: ${tempFilePath} (${data.filename})`);
 
-    // Registrar validação
+    // Registrar validação (guardar também o nome original do arquivo)
     activeAnalyses.set(analysisId, {
       id: analysisId,
       projectPath: tempFilePath,
+      originalFilename: data.filename,
       status: 'starting',
       logs: [],
       startTime: new Date()
@@ -803,6 +954,94 @@ fastify.delete('/api/analysis/history', async (request, reply) => {
   } catch (error) {
     fastify.log.error('Erro ao limpar histórico:', error);
     return reply.code(500).send({ error: 'Erro interno do servidor' });
+  }
+});
+
+// Endpoint: download Adobe validation PDF report
+fastify.get('/api/adobe/report/:id', async (request, reply) => {
+  try {
+    const { id } = request.params;
+    fastify.log.info(`[PDF] Iniciando geração de PDF para validação ID: ${id}`);
+
+    // Prefer in-memory active analysis (has richer data)
+    let analysis = activeAnalyses.get(id);
+    fastify.log.info(`[PDF] Análise encontrada em memória: ${!!analysis}`);
+
+    // Fallback to DB history (stored JSON)
+    if (!analysis) {
+      fastify.log.info(`[PDF] Validação ${id} não encontrada em memória, buscando no banco...`);
+      const row = db.prepare(`
+        SELECT package_name, validation_results
+        FROM adobe_validation_history
+        WHERE id = ?
+      `).get(id);
+      fastify.log.info(`[PDF] Row do banco:`, row);
+
+      if (!row) {
+        fastify.log.warn(`[PDF] Validação ${id} não encontrada no banco`);
+        return reply.code(404).send({ error: 'Validação não encontrada' });
+      }
+      const validationResults = row.validation_results ? JSON.parse(row.validation_results) : null;
+      fastify.log.info(`[PDF] Validation results parsed: ${!!validationResults}`);
+
+      if (!validationResults) {
+        fastify.log.warn(`[PDF] Resultados não disponíveis para validação ${id}`);
+        return reply.code(404).send({ error: 'Resultados não disponíveis para este relatório' });
+      }
+      analysis = {
+        result: {
+          packageName: row.package_name,
+          validationResults
+        }
+      };
+      fastify.log.info(`[PDF] Análise reconstruída do banco para ${id}`);
+    } else {
+      fastify.log.info(`[PDF] Validação ${id} encontrada em memória`);
+    }
+
+    fastify.log.info(`[PDF] Package name: ${analysis?.result?.packageName}`);
+    fastify.log.info(`[PDF] Validation results exists: ${!!analysis?.result?.validationResults}`);
+
+    const pdfData = {
+      packageName: analysis?.result?.packageName,
+      validationResults: analysis?.result?.validationResults || analysis?.result
+    };
+    // Log de verificação extra: tamanho do JSON (se for string) e existência de campos chaves
+    try {
+      const vr = pdfData.validationResults;
+      if (!vr) {
+        fastify.log.warn('[PDF] validationResults está vazio ou indefinido antes de gerar PDF');
+        return reply.code(404).send({ error: 'Resultados de validação não encontrados para este relatório' });
+      }
+      const vrSize = typeof vr === 'string' ? vr.length : JSON.stringify(vr).length;
+      fastify.log.info(`[PDF] validationResults presente; tamanho aproximado: ${vrSize} chars`);
+    } catch (e) {
+      fastify.log.warn('[PDF] Falha ao analisar validationResults para logging:', e?.message || e);
+    }
+    fastify.log.info(`[PDF] Dados para PDF: packageName=${pdfData.packageName}`);
+
+    fastify.log.info(`[PDF] Chamando generateAdobePdfBuffer...`);
+    let buffer;
+    try {
+      buffer = await generateAdobePdfBuffer(pdfData);
+      fastify.log.info(`[PDF] Buffer gerado com sucesso, tamanho: ${buffer?.length || 'undefined'}`);
+    } catch (pdfError) {
+      fastify.log.error(`[PDF] Erro específico na geração do PDF:`, pdfError);
+      fastify.log.error(`[PDF] Stack trace:`, pdfError?.stack);
+      throw pdfError;
+    }
+
+    const fileName = `relatorio-adobe-${(analysis?.result?.packageName || 'pacote').replace(/[^a-zA-Z0-9_.-]/g, '_')}-${id}.pdf`;
+    fastify.log.info(`[PDF] PDF gerado com sucesso: ${fileName}`);
+
+    reply
+      .header('Content-Type', 'application/pdf')
+      .header('Content-Disposition', `attachment; filename="${fileName}"`)
+      .send(buffer);
+  } catch (error) {
+    fastify.log.error('[PDF] Erro ao gerar PDF Adobe:', error);
+    fastify.log.error('[PDF] Stack trace:', error.stack);
+    return reply.code(500).send({ error: 'Erro ao gerar relatório PDF', details: error.message });
   }
 });
 

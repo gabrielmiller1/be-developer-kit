@@ -11,6 +11,7 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
   const [analysisResults, setAnalysisResults] = useState(null);
   const [analysisHistory, setAnalysisHistory] = useState([]);
   const [activeTab, setActiveTab] = useState('execute');
+  const [dashboardStats, setDashboardStats] = useState(null);
 
   const isDevelopment = false; // Força usar API real sempre
 
@@ -29,9 +30,27 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
     }
   };
 
+  // Carregar estatísticas do dashboard (evita erro quando chamada em monitorAnalysis)
+  const loadDashboardStats = async () => {
+    try {
+      if (isDevelopment) {
+        if (mockAPI.getDashboardStats) {
+          const res = await mockAPI.getDashboardStats();
+          setDashboardStats(res.data);
+        }
+      } else {
+        const res = await axios.get('/api/analysis/stats');
+        setDashboardStats(res.data);
+      }
+    } catch (error) {
+      console.error('Failed to load dashboard stats:', error);
+    }
+  };
+
   // Carregar dados iniciais
   useEffect(() => {
-    loadAnalysisHistory();
+  loadAnalysisHistory();
+  loadDashboardStats();
   }, []);
 
   // Iniciar análise
