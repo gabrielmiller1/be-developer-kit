@@ -521,9 +521,12 @@ function generateAdobePdfBuffer(validation) {
 
       // Header (Fortify-like)
       const headerHeight = 72;
-      doc.rect(0, 0, doc.page.width, headerHeight).fill('#0f172a');
-      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Relatório de Validação Adobe AEM', 60, 22);
-      doc.font('Helvetica').fontSize(9).fillColor('#d1d5db').text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, doc.page.width - 200, 28, { width: 140, align: 'right' });
+  doc.rect(0, 0, doc.page.width, headerHeight).fill('#0f172a');
+  doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(16).text('Relatório de Validação Adobe AEM', 60, 22);
+  // Formatar data para horário do Brasil (America/Sao_Paulo)
+  const generatedAt = new Date();
+  const formattedDate = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(generatedAt);
+  doc.font('Helvetica').fontSize(9).fillColor('#d1d5db').text(`Gerado em: ${formattedDate} (America/Sao_Paulo)`, doc.page.width - 220, 28, { width: 180, align: 'right' });
       doc.moveDown(2);
       doc.fillColor('#000000');
 
@@ -605,13 +608,15 @@ function generateAdobePdfBuffer(validation) {
             const sev = (issue.type || issue.severity || 'info').toString().toUpperCase();
             const msg = (issue.message || issue.description || JSON.stringify(issue)).toString();
             doc.font('Helvetica').fontSize(9).fillColor('#111827').text(`${i + 1}. [${sev}] ${msg}`, panelX + 10, y, { width: panelW - 40 });
-            y += 12;
+            // Espaçamento vertical maior entre problemas para melhor leitura
+            y += 16;
             if (issue.file) {
               doc.font('Helvetica-Oblique').fontSize(8).fillColor('#6b7280').text(`Arquivo: ${issue.file}`, panelX + 14, y, { width: panelW - 60 });
-              y += 10;
+              y += 12;
             }
           });
-          y += 8;
+          // Espaço extra após cada grupo de problema
+          y += 12;
         }
       }
 

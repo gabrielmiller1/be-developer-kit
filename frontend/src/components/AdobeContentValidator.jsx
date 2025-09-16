@@ -171,7 +171,7 @@ const AdobeContentValidator = ({ onBack }) => {
         type="file"
         accept=".zip"
         onChange={handleFileSelect}
-        className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-[#cc092f] file:text-white hover:file:bg-[#a00726]"
         disabled={isValidating}
       />
       {selectedFile && (
@@ -486,7 +486,7 @@ const AdobeContentValidator = ({ onBack }) => {
 
         {/* Botões de ação */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <Button className="flex items-center justify-center bg-blue-600 hover:bg-blue-700" onClick={() => handleDownloadReport(validationResults.analysisId)}>
+          <Button className="flex items-center justify-center bg-[#cc092f] hover:bg-[#a00726] text-white" onClick={() => handleDownloadReport(validationResults.analysisId)}>
             <Download className="w-4 h-4 mr-2" />
             Baixar Relatório PDF
           </Button>
@@ -543,15 +543,15 @@ const AdobeContentValidator = ({ onBack }) => {
                           href={`/problemas/adobe.html#${info.anchor}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:text-blue-800 underline"
+                          className="text-xs text-[#cc092f] hover:text-[#a00726] underline"
                         >
                           Ver solução completa
                         </a>
                       </div>
                       <p className="text-sm text-gray-600 mb-3">{info.summary}</p>
-                      <div className="bg-blue-50 border-l-4 border-blue-400 p-3 mb-3">
-                        <p className="text-sm font-medium text-blue-900">Como corrigir:</p>
-                        <p className="text-sm text-blue-800">{info.solution}</p>
+                      <div className="bg-[#fdecea] border-l-4 border-[#f5b3b0] p-3 mb-3">
+                        <p className="text-sm font-medium text-[#cc092f]">Como corrigir:</p>
+                        <p className="text-sm text-[#a00726]">{info.solution}</p>
                       </div>
                       <div className="space-y-1">
                         <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Ocorrências:</p>

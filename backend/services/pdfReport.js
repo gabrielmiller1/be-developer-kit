@@ -16,10 +16,14 @@ async function generateAdobeAemPdfReport(analysis, outputPath) {
 
     doc.fontSize(18).text('Relatório de Validação Adobe AEM', { align: 'center' });
     doc.moveDown();
-    doc.fontSize(12).text(`Pacote: ${analysis.packageName}`);
-    doc.text(`Data: ${new Date().toLocaleString()}`);
-    doc.text(`Status: ${analysis.qualityGateStatus || analysis.status}`);
-    doc.text(`Duração: ${analysis.duration || '-'}\n`);
+  const pkgName = analysis.packageName || analysis.result?.packageName || analysis.originalFilename || '-';
+  const generatedAt = analysis.generatedAt ? new Date(analysis.generatedAt) : new Date();
+  const formattedDate = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' }).format(generatedAt);
+
+  doc.fontSize(12).text(`Pacote: ${pkgName}`);
+  doc.text(`Data: ${formattedDate} (America/Sao_Paulo)`);
+  doc.text(`Status: ${analysis.qualityGateStatus || analysis.status}`);
+  doc.text(`Duração: ${analysis.duration || '-'}\n`);
 
     doc.fontSize(14).text('Resumo:', { underline: true });
     doc.fontSize(12).text(`Erros: ${analysis.result?.metrics?.errors ?? '-'} | Warnings: ${analysis.result?.metrics?.warnings ?? '-'} | Info: ${analysis.result?.metrics?.info ?? '-'}`);
@@ -29,6 +33,8 @@ async function generateAdobeAemPdfReport(analysis, outputPath) {
     if (analysis.result?.validationResults?.issues?.length) {
       analysis.result.validationResults.issues.forEach((issue, idx) => {
         doc.fontSize(11).text(`${idx + 1}. [${issue.type.toUpperCase()}] ${issue.message}${issue.file ? ' (' + issue.file + ')' : ''}`);
+        // Espaçamento extra entre problemas para melhorar legibilidade no PDF
+        doc.moveDown(0.5);
       });
     } else {
       doc.fontSize(11).text('Nenhum problema encontrado.');

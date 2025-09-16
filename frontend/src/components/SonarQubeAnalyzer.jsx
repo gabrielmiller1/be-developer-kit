@@ -150,7 +150,26 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
   ) : null;
 
   // Seção de resultado (pode ser expandida para mostrar summary/resultados)
-  const resultSection = null; // Adapte aqui se quiser mostrar resultado só na tab execute
+  const resultSection = (analysisResults) ? (
+    <div className="mb-4">
+      <div className="mt-4 bg-white border border-gray-200 rounded-lg p-4 shadow-sm flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-gray-900">Análise concluída</h3>
+          <p className="text-xs text-gray-500">Resultados da análise SonarQube disponíveis.</p>
+        </div>
+        {analysisResults.dashboardUrl && (
+          <a
+            href={analysisResults.dashboardUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center px-4 py-2 bg-[#cc092f] text-white rounded hover:bg-[#a00726]"
+          >
+            Ver relatório no Sonar
+          </a>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   // Seção de histórico
   const historySection = (activeTab === 'history') ? (
@@ -186,7 +205,7 @@ const SonarQubeAnalyzer = ({ onBack, systemHealth }) => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.date}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.duration}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <a href={item.sonarUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Ver Detalhes</a>
+                  <a href={item.sonarUrl} target="_blank" rel="noopener noreferrer" className="text-[#cc092f] hover:underline">Ver Detalhes</a>
                 </td>
               </tr>
             ))}

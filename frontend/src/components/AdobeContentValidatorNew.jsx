@@ -181,7 +181,7 @@ const AdobeContentValidator = ({ onBack, systemHealth }) => {
       case 'medium':
         return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
       case 'low':
-        return <Info className="h-4 w-4 text-blue-500" />;
+  return <Info className="h-4 w-4 text-[#cc092f]" />;
       default:
         return <Info className="h-4 w-4 text-gray-500" />;
     }
@@ -380,11 +380,11 @@ const AdobeContentValidator = ({ onBack, systemHealth }) => {
                       </div>
                       <div className="text-sm text-yellow-700 font-medium">Avisos</div>
                     </div>
-                    <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-center p-4 bg-[#fdecea] rounded-lg border border-[#f5b3b0]">
+                      <div className="text-2xl font-bold text-[#cc092f]">
                         {validationResults.metrics?.info || 0}
                       </div>
-                      <div className="text-sm text-blue-700 font-medium">Informações</div>
+                      <div className="text-sm text-[#a00726] font-medium">Informações</div>
                     </div>
                   </div>
 
@@ -451,19 +451,19 @@ const AdobeContentValidator = ({ onBack, systemHealth }) => {
                       {/* Informações */}
                       {validationResults.validationResults.info?.length > 0 && (
                         <div>
-                          <h4 className="font-medium text-blue-600 mb-2 flex items-center gap-2">
+                          <h4 className="font-medium text-[#cc092f] mb-2 flex items-center gap-2">
                             <Info className="h-4 w-4" />
                             Informações ({validationResults.validationResults.info.length})
                           </h4>
                           <div className="space-y-2 max-h-48 overflow-y-auto">
                             {validationResults.validationResults.info.slice(0, 10).map((info, index) => (
-                              <div key={index} className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                              <div key={index} className="p-3 bg-[#fdecea] border border-[#f5b3b0] rounded-md">
                                 <div className="flex items-start gap-2">
                                   {getSeverityIcon(info.severity)}
                                   <div className="flex-1">
-                                    <p className="text-sm font-medium text-blue-800">{info.message}</p>
+                                    <p className="text-sm font-medium text-[#a00726]">{info.message}</p>
                                     {info.file && (
-                                      <p className="text-xs text-blue-600 mt-1">📁 {info.file}</p>
+                                      <p className="text-xs text-[#cc092f] mt-1">📁 {info.file}</p>
                                     )}
                                   </div>
                                 </div>

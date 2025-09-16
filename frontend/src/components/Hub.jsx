@@ -43,24 +43,8 @@ const Hub = ({ onSelectTool, systemHealth }) => {
         'Validação de estrutura de pacotes',
         'Conformidade com padrões Bradesco',
         'Análise de filtros e permissões',
-        'Validação GraphQL queries',
-        'Relatórios detalhados'
       ],
       status: 'online',
-      category: 'Análise de Código'
-    },
-    {
-      id: 'lighthouse',
-      title: 'Lighthouse',
-      description: 'Auditoria de performance e qualidade web',
-      icon: Zap,
-      color: 'bg-[#cc092f]',
-      features: [
-        'Performance',
-        'SEO e acessibilidade',
-        'Core Web Vitals',
-      ],
-      status: 'coming-soon',
       category: 'Análise de Código'
     }
   ];

@@ -90,12 +90,12 @@ const ProjectSelector = ({ projectPath, setProjectPath, isAnalyzing }) => {
           </div>
         </div>
 
-        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4">
+        <div className="rounded-lg bg-[#fdecea] border border-[#f5b3b0] p-4">
           <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+            <Info className="h-5 w-5 text-[#cc092f] mt-0.5 flex-shrink-0" />
             <div className="space-y-2">
-              <h4 className="text-sm font-medium text-blue-900">Requisitos</h4>
-              <p className="text-sm text-blue-800">
+              <h4 className="text-sm font-medium text-[#cc092f]">Requisitos</h4>
+              <p className="text-sm text-[#a00726]">
                 • O caminho deve ser absoluto para o diretório raiz do projeto
               </p>
             </div>

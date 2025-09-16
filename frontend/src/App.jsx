@@ -100,7 +100,7 @@ function App() {
               <p className="text-gray-600 mb-6">Em desenvolvimento...</p>
               <button 
                 onClick={handleBackToHub}
-                className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors"
+                className="bg-[#cc092f] text-white px-6 py-3 rounded-lg hover:bg-[#a00726] transition-colors"
               >
                 ← Voltar ao Hub
               </button>
